@@ -1,6 +1,5 @@
-//
 // Copyright 2014-2018 Cristian Maglie. All rights reserved.
-// Copyright 2019 Veniamin Albaev <albenik@gmail.com>
+// Copyright 2019-2021 Veniamin Albaev <albenik@gmail.com>
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 //
@@ -63,7 +62,7 @@ func Open(name string, opts ...Option) (*Port, error) {
 	})
 
 	// Setup serial port
-	if err := p.Reconfigure(opts...); err != nil {
+	if err = p.Reconfigure(opts...); err != nil {
 		return nil, p.closeAndReturnError(InvalidSerialPort, err)
 	}
 
@@ -359,7 +358,7 @@ func (p *Port) GetModemStatusBits() (*ModemStatusBits, error) {
 }
 
 func (p *Port) closeAndReturnError(code PortErrorCode, err error) *PortError {
-	return &PortError{code: code, causedBy: multierr.Combine(
+	return &PortError{code: code, wrapped: multierr.Combine(
 		err,
 		unix.IoctlSetInt(p.internal.handle, unix.TIOCNXCL, 0),
 		unix.Close(p.internal.handle),

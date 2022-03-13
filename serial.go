@@ -1,10 +1,8 @@
-//
 // Copyright 2014-2018 Cristian Maglie.
-// Copyright 2019 Veniamin Albaev <albenik@gmail.com>
+// Copyright 2019-2021 Veniamin Albaev <albenik@gmail.com>
 // All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-//
 
 package serial
 
@@ -70,13 +68,14 @@ func (p *Port) String() string {
 }
 
 func (p *Port) checkValid() error {
-	if p == nil || p.internal == nil || !isHandleValid(p.internal.handle) {
-		return &PortError{code: PortClosed, causedBy: os.ErrInvalid}
-	}
-	if !p.opened {
+	switch {
+	case p == nil || p.internal == nil || !p.opened:
 		return &PortError{code: PortClosed}
+	case !isHandleValid(p.internal.handle):
+		return &PortError{code: PortClosed, wrapped: os.ErrInvalid}
+	default:
+		return nil
 	}
-	return nil
 }
 
 func newWithDefaults(n string, p *port) *Port {

@@ -1,7 +1,6 @@
 package serial_test
 
 import (
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,13 +10,11 @@ import (
 )
 
 func TestPort_Nil_SetDTR(t *testing.T) {
-	var p *serial.Port
-	err := p.SetDTR(false)
-	if assert.Error(t, err) && assert.IsType(t, new(serial.PortError), err) {
-		portErr := err.(*serial.PortError)
-		assert.Equal(t, serial.PortClosed, portErr.Code())
-		assert.Equal(t, os.ErrInvalid, portErr.Cause())
-	}
+	err := (*serial.Port)(nil).SetDTR(false)
+	var portErr *serial.PortError
+	require.ErrorAs(t, err, &portErr)
+	assert.Equal(t, serial.PortClosed, portErr.Code())
+	assert.Nil(t, portErr.Unwrap())
 }
 
 func TestPort_Nil_String(t *testing.T) {

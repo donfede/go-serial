@@ -1,8 +1,6 @@
-//
 // Copyright 2014-2017 Cristian Maglie. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-//
 
 package enumerator
 
@@ -10,6 +8,7 @@ package enumerator
 
 // PortDetails contains detailed information about USB serial port.
 // Use GetDetailedPortsList function to retrieve it.
+// Deprecated: package moved to albenik-go/serial-enumerator
 type PortDetails struct {
 	Name         string
 	IsUSB        bool
@@ -24,11 +23,13 @@ type PortDetails struct {
 // GetDetailedPortsList retrieve ports details like USB VID/PID.
 // Please note that this function may not be available on all OS:
 // in that case a FunctionNotImplemented error is returned.
+// Deprecated: package moved to albenik-go/serial-enumerator
 func GetDetailedPortsList() ([]*PortDetails, error) {
 	return nativeGetDetailedPortsList()
 }
 
 // PortEnumerationError is the error type for serial ports enumeration
+// Deprecated: package moved to albenik-go/serial-enumerator
 type PortEnumerationError struct {
 	causedBy error
 }

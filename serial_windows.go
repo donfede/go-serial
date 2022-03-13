@@ -1,10 +1,8 @@
-//
 // Copyright 2014-2018 Cristian Maglie.
-// Copyright 2019 Veniamin Albaev <albenik@gmail.com>
+// Copyright 2019-2021 Veniamin Albaev <albenik@gmail.com>
 // All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-//
 
 package serial
 
@@ -103,9 +101,18 @@ func (p *Port) Close() error {
 	err := syscall.CloseHandle(p.internal.handle)
 	p.internal.handle = syscall.InvalidHandle
 	if err != nil {
-		return &PortError{code: OsError, causedBy: err}
+		return &PortError{code: OsError, wrapped: err}
 	}
 	return nil
+}
+
+func (p *Port) clearCommError() (uint32, *comstat, error) {
+	errs := uint32(0)
+	stat := new(comstat)
+	if err := clearCommError(p.internal.handle, &errs, stat); err != nil {
+		return 0, nil, &PortError{code: InvalidSerialPort, wrapped: err}
+	}
+	return errs, stat, nil
 }
 
 func (p *Port) ReadyToRead() (uint32, error) {
@@ -113,10 +120,9 @@ func (p *Port) ReadyToRead() (uint32, error) {
 		return 0, err
 	}
 
-	var errs uint32
-	var stat comstat
-	if err := clearCommError(p.internal.handle, &errs, &stat); err != nil {
-		return 0, &PortError{code: OsError, causedBy: err}
+	_, stat, err := p.clearCommError()
+	if err != nil {
+		return 0, &PortError{code: OsError, wrapped: err}
 	}
 	return stat.inque, nil
 }
@@ -126,15 +132,9 @@ func (p *Port) Read(b []byte) (int, error) {
 		return 0, err
 	}
 
-	if p.internal.handle == syscall.InvalidHandle {
-		return 0, &PortError{code: PortClosed, causedBy: nil}
-	}
-	handle := p.internal.handle
-
-	errs := new(uint32)
-	stat := new(comstat)
-	if err := clearCommError(handle, errs, stat); err != nil {
-		return 0, &PortError{code: InvalidSerialPort, causedBy: err}
+	_, stat, err := p.clearCommError()
+	if err != nil {
+		return 0, &PortError{code: InvalidSerialPort, wrapped: err}
 	}
 
 	size := uint32(len(b))
@@ -149,25 +149,28 @@ func (p *Port) Read(b []byte) (int, error) {
 		readSize = size
 	}
 
-	if readSize > 0 {
-		var read uint32
-		overlapped, err := createOverlappedStruct()
-		if err != nil {
-			return 0, &PortError{code: OsError, causedBy: err}
-		}
-		defer syscall.CloseHandle(overlapped.HEvent)
-		err = syscall.ReadFile(handle, b[:readSize], &read, overlapped)
-		if err != nil && err != syscall.ERROR_IO_PENDING {
-			return 0, &PortError{code: OsError, causedBy: err}
-		}
-		err = getOverlappedResult(handle, overlapped, &read, true)
-		if err != nil && err != syscall.ERROR_OPERATION_ABORTED {
-			return 0, &PortError{code: OsError, causedBy: err}
-		}
-		return int(read), nil
-	} else {
+	if readSize == 0 {
 		return 0, nil
 	}
+
+	var read uint32
+	overlapped, err := createOverlappedStruct()
+	if err != nil {
+		return 0, &PortError{code: OsError, wrapped: err}
+	}
+	defer syscall.CloseHandle(overlapped.HEvent)
+
+	err = syscall.ReadFile(p.internal.handle, b[:readSize], &read, overlapped)
+	if err != nil && err != syscall.ERROR_IO_PENDING {
+		return 0, &PortError{code: OsError, wrapped: err}
+	}
+
+	err = getOverlappedResult(p.internal.handle, overlapped, &read, true)
+	if err != nil && err != syscall.ERROR_OPERATION_ABORTED {
+		return 0, &PortError{code: OsError, wrapped: err}
+	}
+
+	return int(read), nil
 }
 
 func (p *Port) Write(b []byte) (int, error) {
@@ -175,11 +178,8 @@ func (p *Port) Write(b []byte) (int, error) {
 		return 0, err
 	}
 
-	h := p.internal.handle
-	errs := new(uint32)
-	stat := new(comstat)
-	if err := clearCommError(h, errs, stat); err != nil {
-		return 0, &PortError{code: InvalidSerialPort, causedBy: err}
+	if _, _, err := p.clearCommError(); err != nil {
+		return 0, &PortError{code: InvalidSerialPort, wrapped: err}
 	}
 
 	overlapped, err := createOverlappedStruct()
@@ -188,9 +188,9 @@ func (p *Port) Write(b []byte) (int, error) {
 	}
 	defer syscall.CloseHandle(overlapped.HEvent)
 	var written uint32
-	err = syscall.WriteFile(h, b, &written, overlapped)
+	err = syscall.WriteFile(p.internal.handle, b, &written, overlapped)
 	if err == nil || err == syscall.ERROR_IO_PENDING || err == syscall.ERROR_OPERATION_ABORTED {
-		err = getOverlappedResult(h, overlapped, &written, true)
+		err = getOverlappedResult(p.internal.handle, overlapped, &written, true)
 		if err == nil || err == syscall.ERROR_OPERATION_ABORTED {
 			return int(written), nil
 		}
@@ -246,7 +246,7 @@ func (p *Port) SetDTR(dtr bool) error {
 
 	params := &dcb{}
 	if err := getCommState(p.internal.handle, params); err != nil {
-		return &PortError{causedBy: err}
+		return &PortError{wrapped: err}
 	}
 
 	params.Flags &= dcbDTRControlDisableMask
@@ -255,7 +255,7 @@ func (p *Port) SetDTR(dtr bool) error {
 	}
 
 	if err := setCommState(p.internal.handle, params); err != nil {
-		return &PortError{causedBy: err}
+		return &PortError{wrapped: err}
 	}
 
 	return nil
@@ -290,14 +290,14 @@ func (p *Port) SetRTS(rts bool) error {
 
 	params := &dcb{}
 	if err := getCommState(p.internal.handle, params); err != nil {
-		return &PortError{causedBy: err}
+		return &PortError{wrapped: err}
 	}
 	params.Flags &= dcbRTSControlDisableMask
 	if rts {
 		params.Flags |= dcbRTSControlEnable
 	}
 	if err := setCommState(p.internal.handle, params); err != nil {
-		return &PortError{causedBy: err}
+		return &PortError{wrapped: err}
 	}
 	return nil
 }
@@ -397,16 +397,16 @@ func (p *Port) setWriteTimeoutValues(t int) {
 func (p *Port) reconfigure() error {
 	if err := setCommTimeouts(p.internal.handle, p.internal.timeouts); err != nil {
 		p.Close()
-		return &PortError{code: InvalidSerialPort, causedBy: err}
+		return &PortError{code: InvalidSerialPort, wrapped: err}
 	}
 	if err := setCommMask(p.internal.handle, evErr); err != nil {
 		p.Close()
-		return &PortError{code: InvalidSerialPort, causedBy: err}
+		return &PortError{code: InvalidSerialPort, wrapped: err}
 	}
 	params := &dcb{}
 	if err := getCommState(p.internal.handle, params); err != nil {
 		p.Close()
-		return &PortError{code: InvalidSerialPort, causedBy: err}
+		return &PortError{code: InvalidSerialPort, wrapped: err}
 	}
 	params.Flags &= dcbRTSControlDisableMask
 	params.Flags |= dcbRTSControlEnable
@@ -435,7 +435,7 @@ func (p *Port) reconfigure() error {
 
 	if err := setCommState(p.internal.handle, params); err != nil {
 		p.Close()
-		return &PortError{code: InvalidSerialPort, causedBy: err}
+		return &PortError{code: InvalidSerialPort, wrapped: err}
 	}
 	return nil
 }

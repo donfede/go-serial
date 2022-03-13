@@ -2,9 +2,9 @@ name: Go
 
 on:
   push:
-    branches: [ v2, dev ]
+    branches: [ v2 ]
   pull_request:
-    branches: [ v2, dev ]
+    branches: [ v2 ]
 
 jobs:
   # Test
@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         os: [ 'ubuntu-latest', 'windows-latest', 'macos-latest' ]
-        go: [ '1.14', '1.15', '1.16', '1.17' ]
+        go: [ '1.15', '1.16', '1.17' ]
 
     runs-on: ${{ matrix.os }}
 
@@ -40,7 +40,7 @@ jobs:
     strategy:
       matrix:
         os: [ 'ubuntu-latest', 'windows-latest', 'macos-latest' ]
-        go: [ '1.14', '1.15', '1.16' ]
+        go: [ '1.15', '1.16', '1.17' ]
         goos: [ 'linux', 'windows', 'darwin', 'freebsd', 'openbsd' ]
         goarch: [ 'amd64' ]
 
